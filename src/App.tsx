@@ -89,15 +89,37 @@ function App() {
     socket.emit('roll-dice', sessionCode)
   }
 
+  const handleReset = () => {
+    // Reset all state
+    setGameResult(null);
+    setSessionCode('');
+    setWaitingForOpponent(false);
+    setRolls({});
+    setShowJoinInput(false);
+    setIsInSession(false);
+    setPlayerCount(0);
+
+    // Disconnect and reconnect socket
+    socket.disconnect();
+    socket.connect();
+  };
+
   return (
     <div className="flex flex-col items-center justify-center h-screen">
       <div className="w-96 flex flex-col gap-4 items-center">
-        <h1 className="text-2xl font-bold mb-4">D20 Roller</h1>
+        <div className="flex justify-center mb-8 w-full items-center min-h-[40px]">
+          {!isInSession && <h1 className="text-2xl font-bold">D20 Roller</h1>}
+          
+        </div>
         
         {!isInSession && (
           <div className="flex flex-col gap-4 w-full items-center">
-            <button className="border rounded  p-1 text-start px-2 font-bold" onClick={handleCreateSession}>Start a session</button>
-            <button className="border rounded  p-1 px-2 text-start font-bold" onClick={handleJoinSession}>Join a session</button>
+            {!showJoinInput && (
+              <>
+                <button className="border rounded p-1 text-start px-2 font-bold" onClick={handleCreateSession}>Start a session</button>
+                <button className="border rounded p-1 px-2 text-start font-bold" onClick={handleJoinSession}>Join a session</button>
+              </>
+            )}
             {showJoinInput && (
               <form onSubmit={handleJoinSubmit} className="flex gap-2 flex-col w-32">
                 <input 
@@ -127,7 +149,7 @@ function App() {
             <button 
               onClick={handleRollDice}
               disabled={playerCount < 2}
-              className={`border rounded p-1 px-2 font-bold my-4 ${playerCount < 2 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`border rounded p-1 px-2 font-bold my-4 min-w-24 ${playerCount < 2 ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               Roll
             </button>
@@ -144,7 +166,14 @@ function App() {
             <p>Waiting for opponent to roll...</p>
           )}
           {gameResult && <p>{gameResult}</p>}
+          <button 
+            onClick={handleReset}
+            className="border rounded p-1 px-2 font-bold mt-4 min-w-24"
+          >
+            Reset
+          </button>
         </div>
+        
       </div>
     </div>
   )
