@@ -4,6 +4,12 @@ import './App.css'
 
 const socket = io(import.meta.env.VITE_SOCKET_SERVER_URL) // Configure WebSocket URL in .env file
 
+interface GifResult {
+  winner?: string[];
+  loser?: string[];
+  critical?: string[];
+}
+
 function App() {
   const [gameResult, setGameResult] = useState<string | null>(null)
   const [sessionCode, setSessionCode] = useState<string>('')
@@ -12,6 +18,10 @@ function App() {
   const [showJoinInput, setShowJoinInput] = useState(false)
   const [isInSession, setIsInSession] = useState(false)
   const [playerCount, setPlayerCount] = useState(0)
+  const [gifs, setGifs] = useState<GifResult>({});
+
+  // Add Giphy API key
+  const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY;
 
   useEffect(() => {
     // Listen for game events
@@ -46,13 +56,24 @@ function App() {
       setWaitingForOpponent(socketId === socket.id);
     });
 
-    socket.on('game-result', ({ winner, highestRoll, rolls }) => {
-      const resultMessage = winner === socket.id 
+    socket.on('game-result', async ({ winner, highestRoll, rolls }) => {
+      const isWinner = winner === socket.id;
+      const myRoll = socket.id ? rolls[socket.id] : undefined;
+      
+      const resultMessage = isWinner 
         ? `You won with ${highestRoll}!` 
         : `Opponent won with ${highestRoll}!`;
+      
       setGameResult(resultMessage);
       setRolls(rolls);
       setWaitingForOpponent(false);
+
+      // Fetch appropriate GIFs
+      const gameGifs = await fetchGameGifs(isWinner, myRoll);
+      setGifs(prev => ({
+        ...prev,
+        [isWinner ? 'winner' : 'loser']: gameGifs
+      }));
     });
 
     // Cleanup listeners
@@ -64,7 +85,7 @@ function App() {
       socket.off('player-rolled')
       socket.off('player-joined')
     }
-  }, [])
+  })
 
   const handleCreateSession = () => {
     setShowJoinInput(false)
@@ -102,6 +123,42 @@ function App() {
     // Disconnect and reconnect socket
     socket.disconnect();
     socket.connect();
+
+    setGifs({});
+  };
+
+  const fetchGif = async (searchTerm: string) => {
+    try {
+      const response = await fetch(
+        `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${searchTerm}&limit=10&rating=g`
+      );
+      const data = await response.json();
+      // Get random GIF from results
+      const randomIndex = Math.floor(Math.random() * Math.min(data.data.length, 10));
+      return data.data[randomIndex]?.images.fixed_height.url;
+    } catch (error) {
+      console.error('Error fetching GIF:', error);
+      return null;
+    }
+  };
+
+  const fetchGameGifs = async (isWinner: boolean, roll: number) => {
+    const newGifs: string[] = [];
+    
+    // Fetch main result GIF
+    const mainGif = await fetchGif(isWinner ? 'winner' : 'loser');
+    if (mainGif) newGifs.push(mainGif);
+    
+    // Fetch critical GIF if applicable
+    if (roll === 20 && isWinner) {
+      const criticalGif = await fetchGif('critical success');
+      if (criticalGif) newGifs.push(criticalGif);
+    } else if (roll === 1 && !isWinner) {
+      const criticalGif = await fetchGif('critical failure');
+      if (criticalGif) newGifs.push(criticalGif);
+    }
+    
+    return newGifs;
   };
 
   return (
@@ -165,10 +222,38 @@ function App() {
           {waitingForOpponent && (
             <p>Waiting for opponent to roll...</p>
           )}
-          {gameResult && <p>{gameResult}</p>}
+          {gameResult && (
+            <div className="flex flex-col items-center gap-4">
+              <p>{gameResult}</p>
+              {gifs.winner && (
+                <div className="flex flex-col gap-2">
+                  {gifs.winner.map((gif, index) => (
+                    <img 
+                      key={index} 
+                      src={gif} 
+                      alt="Winner GIF" 
+                      className="max-w-xs rounded-lg shadow-lg"
+                    />
+                  ))}
+                </div>
+              )}
+              {gifs.loser && (
+                <div className="flex flex-col gap-2">
+                  {gifs.loser.map((gif, index) => (
+                    <img 
+                      key={index} 
+                      src={gif} 
+                      alt="Loser GIF" 
+                      className="max-w-xs rounded-lg shadow-lg"
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <button 
             onClick={handleReset}
-            className="border rounded p-1 px-2 font-bold mt-4 min-w-24"
+            className="border rounded p-1 px-2 font-bold mt-4"
           >
             Reset
           </button>
