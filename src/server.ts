@@ -1,7 +1,6 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { v4 as uuidv4 } from 'uuid';
 
 const app = express();
 const httpServer = createServer(app);
@@ -23,7 +22,7 @@ io.on('connection', (socket) => {
   console.log('Client connected');
 
   socket.on('create-session', () => {
-    const sessionCode = uuidv4().substring(0, 6);
+    const sessionCode = Math.floor(1000 + Math.random() * 9000).toString();
     sessions[sessionCode] = {
       rolls: {},
       players: [socket.id]
@@ -48,6 +47,7 @@ io.on('connection', (socket) => {
     session.players.push(socket.id);
     socket.join(sessionCode);
     socket.emit('session-joined', `Joined session ${sessionCode}`);
+    socket.to(sessionCode).emit('player-joined');
   });
 
   socket.on('roll-dice', (sessionCode) => {
@@ -58,16 +58,15 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const rollValue = Math.floor(Math.random() * 6) + 1;
+    const rollValue = Math.floor(Math.random() * 20) + 1;
     session.rolls[socket.id] = rollValue;
 
-    // Emit the roll to all players in the session
     io.to(sessionCode).emit('player-rolled', {
       socketId: socket.id,
-      value: rollValue
+      value: rollValue,
+      rolls: session.rolls
     });
 
-    // Check if both players have rolled
     if (Object.keys(session.rolls).length === 2) {
       const rolls = Object.entries(session.rolls);
       const winner = rolls.reduce((a, b) => a[1] > b[1] ? a : b);
@@ -78,7 +77,6 @@ io.on('connection', (socket) => {
         highestRoll: winner[1]
       });
       
-      // Reset rolls for next round
       session.rolls = {};
     }
   });
