@@ -1,35 +1,31 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect, useState } from 'react';
+import { io } from 'socket.io-client';
+
+const socket = io(import.meta.env.VITE_SOCKET_SERVER_URL); // Configure WebSocket URL in .env file
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [gameResult, setGameResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    socket.on('game-result', (result) => {
+      setGameResult(result);
+    });
+
+    return () => {
+      socket.off('game-result');
+    };
+  }, []);
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <div>
+      <h1>Dice Roller</h1>
+      <input placeholder="Enter code" />
+      <button>Start a session</button>
+      <button>Join a session</button>
+      <button>Roll</button>
+      {gameResult && <p>Game Result: {gameResult}</p>}
+    </div>
+  );
 }
 
-export default App
+export default App;
