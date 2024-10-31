@@ -7,6 +7,8 @@ const socket = io(import.meta.env.VITE_SOCKET_SERVER_URL) // Configure WebSocket
 function App() {
   const [gameResult, setGameResult] = useState<string | null>(null)
   const [sessionCode, setSessionCode] = useState<string>('')
+  const [currentRoll, setCurrentRoll] = useState<number | null>(null);
+  const [waitingForOpponent, setWaitingForOpponent] = useState(false);
 
   useEffect(() => {
     // Listen for game events
@@ -27,12 +29,31 @@ function App() {
       console.error('Socket error:', error)
     })
 
+    socket.on('player-rolled', ({ socketId, value }) => {
+      if (socketId === socket.id) {
+        setCurrentRoll(value);
+        setWaitingForOpponent(true);
+      } else {
+        setWaitingForOpponent(false);
+      }
+    });
+
+    socket.on('game-result', ({ winner, highestRoll }) => {
+      const resultMessage = winner === socket.id 
+        ? `You won with ${highestRoll}!` 
+        : `Opponent won with ${highestRoll}!`;
+      setGameResult(resultMessage);
+      setCurrentRoll(null);
+      setWaitingForOpponent(false);
+    });
+
     // Cleanup listeners
     return () => {
       socket.off('game-result')
       socket.off('session-created')
       socket.off('session-joined')
       socket.off('error')
+      socket.off('player-rolled')
     }
   }, [])
 
@@ -62,7 +83,13 @@ function App() {
         <button onClick={handleJoinSession}>Join a session</button>
         <button onClick={handleRollDice}>Roll</button>
       </div>
-      {gameResult && <p>Game Result: {gameResult}</p>}
+      {currentRoll && (
+        <p>You rolled: {currentRoll}</p>
+      )}
+      {waitingForOpponent && (
+        <p>Waiting for opponent to roll...</p>
+      )}
+      {gameResult && <p>{gameResult}</p>}
     </div>
   )
 }

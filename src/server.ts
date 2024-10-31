@@ -7,33 +7,41 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173", // Your frontend URL
+    origin: "http://localhost:5173",
     methods: ["GET", "POST"]
   }
 });
 
-// In-memory storage
-const sessions = new Map();
+interface GameSession {
+  rolls: { [socketId: string]: number };
+  players: string[];
+}
+
+const sessions: { [code: string]: GameSession } = {};
 
 io.on('connection', (socket) => {
   console.log('Client connected');
 
   socket.on('create-session', () => {
-    const sessionCode = uuidv4().substring(0, 6); // Generate shorter code
-    sessions.set(sessionCode, {
-      players: [socket.id],
-      lastRoll: null
-    });
-    
+    const sessionCode = uuidv4().substring(0, 6);
+    sessions[sessionCode] = {
+      rolls: {},
+      players: [socket.id]
+    };
     socket.join(sessionCode);
     socket.emit('session-created', sessionCode);
   });
 
   socket.on('join-session', (sessionCode) => {
-    const session = sessions.get(sessionCode);
+    const session = sessions[sessionCode];
     
     if (!session) {
       socket.emit('error', 'Session not found');
+      return;
+    }
+
+    if (session.players.length >= 2) {
+      socket.emit('error', 'Session is full');
       return;
     }
 
@@ -43,26 +51,44 @@ io.on('connection', (socket) => {
   });
 
   socket.on('roll-dice', (sessionCode) => {
-    const session = sessions.get(sessionCode);
+    const session = sessions[sessionCode];
     
     if (!session) {
       socket.emit('error', 'Session not found');
       return;
     }
 
-    const result = Math.floor(Math.random() * 6) + 1;
-    session.lastRoll = result;
-    
-    // Broadcast to all players in the session
-    io.to(sessionCode).emit('game-result', result);
+    const rollValue = Math.floor(Math.random() * 6) + 1;
+    session.rolls[socket.id] = rollValue;
+
+    // Emit the roll to all players in the session
+    io.to(sessionCode).emit('player-rolled', {
+      socketId: socket.id,
+      value: rollValue
+    });
+
+    // Check if both players have rolled
+    if (Object.keys(session.rolls).length === 2) {
+      const rolls = Object.entries(session.rolls);
+      const winner = rolls.reduce((a, b) => a[1] > b[1] ? a : b);
+      
+      io.to(sessionCode).emit('game-result', {
+        rolls: session.rolls,
+        winner: winner[0],
+        highestRoll: winner[1]
+      });
+      
+      // Reset rolls for next round
+      session.rolls = {};
+    }
   });
 
   socket.on('disconnect', () => {
     // Clean up sessions when players disconnect
-    sessions.forEach((session, code) => {
-      session.players = session.players.filter((id: string) => id !== socket.id);
-      if (session.players.length === 0) {
-        sessions.delete(code);
+    Object.keys(sessions).forEach((code) => {
+      sessions[code].players = sessions[code].players.filter(id => id !== socket.id);
+      if (sessions[code].players.length === 0) {
+        delete sessions[code];
       }
     });
   });
